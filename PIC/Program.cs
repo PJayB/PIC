@@ -71,6 +71,15 @@ namespace PIC
             }
         );
 
+        static readonly DitherPattern FanDither = new DitherPattern(
+            16,
+            new int[][]
+            {
+                new int[] {          7, 0 },
+                new int[] { 1, 3, 5, 0, 0 }
+            }
+        );
+
         static readonly DitherPattern JarvisJudiceNinkeDither = new DitherPattern(
             48,
             new int[][]
@@ -122,10 +131,10 @@ namespace PIC
 
         struct SignedColor
         {
-            public int A;
-            public int R;
-            public int G;
-            public int B;
+            public float A;
+            public float R;
+            public float G;
+            public float B;
 
             public SignedColor(int a, int r, int g, int b)
             {
@@ -150,8 +159,8 @@ namespace PIC
                     float r = R;
                     float g = G;
                     float b = B;
-                    //return (0.2126f * r * r + 0.7152f * g * g + 0.0722f * b * b);
-                    return (r * r + g * g + b * b) / 3.0f;
+                    return (0.2126f * r + 0.7152f * g + 0.0722f * b);
+                    //return r + g + b;
                 }
             }
         }
@@ -161,17 +170,17 @@ namespace PIC
             int _width;
             int _height;
             SignedColor[] _errorMatrix;
-            float _totalSquaredError;
+            float _totalError;
 
             public Ditherer(int width, int height)
             {
                 _width = width;
                 _height = height;
                 _errorMatrix = new SignedColor[width * height];
-                _totalSquaredError = 0;
+                _totalError = 0;
             }
 
-            public float MeanSquaredError => _totalSquaredError / (float)(_width * _height);
+            public float MeanSquaredError => (_totalError * _totalError) / (float)(_width * _height);
             public float RootMeanSquaredError => (float)Math.Sqrt(MeanSquaredError);
 
             private SignedColor GetError(int x, int y)
@@ -203,7 +212,7 @@ namespace PIC
                     a.B - b.B);
             }
 
-            static int QuantizeChannel(int c)
+            static int QuantizeChannel(float c)
             {
                 // 0, 85, 170, 255
                 if (c < 42) return 0;
@@ -253,9 +262,10 @@ namespace PIC
                 // Calculate the difference
                 SignedColor delta = Diff(c, q);
 
-                // First row handled differently
-                if (pattern.KernelHeight > 0 && pattern.KernelMinX != pattern.KernelMaxX)
+                // Kernel may be zero size (so we should ignore it)
+                if (pattern.KernelHeight > 0)
                 {
+                    // First row handled differently
                     for (int i = 1; i <= pattern.KernelMaxX; ++i)
                     {
                         AddError(x + i, y, CalculateError(delta, i, 0, pattern));
@@ -271,7 +281,7 @@ namespace PIC
                     }
                 }
 
-                _totalSquaredError += delta.RGBError;
+                _totalError += delta.RGBError;
 
                 return q;
             }
@@ -302,9 +312,10 @@ namespace PIC
 
         static readonly Dictionary<string, DitherPattern> DitherPatterns = new Dictionary<string, DitherPattern>
         {
-            { "NoDither", NoDither },
+            //{ "NoDither", NoDither },
             { "FalseFloydSteinberg", FalseFloydSteinbergDither },
             { "FloydSteinberg", FloydSteinbergDither },
+            { "Fan", FanDither },
             { "JarvisJudiceNinke", JarvisJudiceNinkeDither },
             { "Atkinson", AtkinsonDither },
             { "TwoRowSierra", TwoRowSierraDither },
