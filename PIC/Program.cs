@@ -22,23 +22,46 @@ namespace PIC
                 Divisor = divisor;
                 Kernel = kernel;
 
-                int kernelWidth = 0;
-
-                foreach (int[] row in Kernel)
+                if (kernel.Length == 0)
                 {
-                    if (kernelWidth == 0)
-                        kernelWidth = 1 + 2 * row.Length;
-                    else if (row.Length != kernelWidth)
-                        throw new Exception("Diffusion Kernel cannot be variable width");
+                    KernelMinX = 0;
+                    KernelMaxX = 0;
+                    KernelHeight = 0;
                 }
+                else
+                {
+                    int kernelWidth = 0;
 
-                KernelMinX = -kernel[0].Length;
-                KernelMaxX = kernel[0].Length;
-                KernelHeight = kernel.Length;
+                    foreach (int[] row in Kernel)
+                    {
+                        if (kernelWidth == 0)
+                            kernelWidth = 1 + 2 * row.Length;
+                        else if (row.Length != kernelWidth)
+                            throw new Exception("Diffusion Kernel cannot be variable width");
+                    }
+
+                    KernelMinX = -kernel[0].Length;
+                    KernelMaxX = kernel[0].Length;
+                    KernelHeight = kernel.Length;
+                }
             }
         };
 
         #region static readonly dither patterns
+        static readonly DitherPattern NoDither = new DitherPattern(
+            1,
+            new int[][] { }
+        );
+
+        static readonly DitherPattern FalseFloydSteinbergDither = new DitherPattern(
+            8,
+            new int[][]
+            {
+                new int[] {       3 },
+                new int[] { 0, 3, 2 }
+            }
+        );
+
         static readonly DitherPattern FloydSteinbergDither = new DitherPattern(
             16,
             new int[][]
@@ -221,7 +244,7 @@ namespace PIC
 
             public Color Dither(int x, int y, Color c, DitherPattern pattern)
             {
-                // Get the error at this pixel
+                // Get the existing error at this pixel
                 SignedColor e = GetError(x, y);
 
                 // Get the quantized color
@@ -231,17 +254,20 @@ namespace PIC
                 SignedColor delta = Diff(c, q);
 
                 // First row handled differently
-                for (int i = 1; i <= pattern.KernelMaxX; ++i)
+                if (pattern.KernelHeight > 0 && pattern.KernelMinX != pattern.KernelMaxX)
                 {
-                    AddError(x + i, y, CalculateError(delta, i, 0, pattern));
-                }
-
-                // Process subsequent rows
-                for (int j = 1; j < pattern.KernelHeight; ++j)
-                {
-                    for (int i = pattern.KernelMinX; i <= pattern.KernelMaxX; ++i)
+                    for (int i = 1; i <= pattern.KernelMaxX; ++i)
                     {
-                        AddError(x + i, y + j, CalculateError(delta, i, j, pattern));
+                        AddError(x + i, y, CalculateError(delta, i, 0, pattern));
+                    }
+
+                    // Process subsequent rows
+                    for (int j = 1; j < pattern.KernelHeight; ++j)
+                    {
+                        for (int i = pattern.KernelMinX; i <= pattern.KernelMaxX; ++i)
+                        {
+                            AddError(x + i, y + j, CalculateError(delta, i, j, pattern));
+                        }
                     }
                 }
 
@@ -276,6 +302,8 @@ namespace PIC
 
         static readonly Dictionary<string, DitherPattern> DitherPatterns = new Dictionary<string, DitherPattern>
         {
+            { "NoDither", NoDither },
+            { "FalseFloydSteinberg", FalseFloydSteinbergDither },
             { "FloydSteinberg", FloydSteinbergDither },
             { "JarvisJudiceNinke", JarvisJudiceNinkeDither },
             { "Atkinson", AtkinsonDither },
