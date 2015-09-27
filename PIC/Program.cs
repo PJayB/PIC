@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Drawing;
 using System.Drawing.Imaging;
 using System.IO;
@@ -123,10 +124,11 @@ namespace PIC
             {
                 get
                 {
-                    float r = R / 255.0f;
-                    float g = G / 255.0f;
-                    float b = B / 255.0f;
-                    return (0.2126f * r * r + 0.7152f * g * g + 0.0722f * b * b);
+                    float r = R;
+                    float g = G;
+                    float b = B;
+                    //return (0.2126f * r * r + 0.7152f * g * g + 0.0722f * b * b);
+                    return (r * r + g * g + b * b) / 3.0f;
                 }
             }
         }
@@ -147,6 +149,7 @@ namespace PIC
             }
 
             public float MeanSquaredError => _totalSquaredError / (float)(_width * _height);
+            public float RootMeanSquaredError => (float)Math.Sqrt(MeanSquaredError);
 
             private SignedColor GetError(int x, int y)
             {
@@ -268,50 +271,61 @@ namespace PIC
                 }
             }
 
-            return ditherer.MeanSquaredError;
+            return ditherer.RootMeanSquaredError;
         }
 
-        static readonly DitherPattern[] DitherPatterns = new DitherPattern[]
+        static readonly Dictionary<string, DitherPattern> DitherPatterns = new Dictionary<string, DitherPattern>
         {
-            FloydSteinbergDither,
-            JarvisJudiceNinkeDither,
-            AtkinsonDither,
-            TwoRowSierraDither,
-            SierraDither,
-            SierraLiteDither
+            { "FloydSteinberg", FloydSteinbergDither },
+            { "JarvisJudiceNinke", JarvisJudiceNinkeDither },
+            { "Atkinson", AtkinsonDither },
+            { "TwoRowSierra", TwoRowSierraDither },
+            { "Sierra", SierraDither },
+            { "SierraLite", SierraLiteDither }
         };
 
         static void DoOneImage(string filename, Color transparentColorKey)
         {
-            string previewFile = Path.Combine(Path.GetDirectoryName(filename), "preview", Path.GetFileNameWithoutExtension(filename) + "_preview.png");
-
             using (Bitmap bmp = Bitmap.FromFile(filename) as Bitmap)
             {
+#if DEBUG
+                string copyFile = Path.Combine(Path.GetDirectoryName(filename), "preview", $"{Path.GetFileNameWithoutExtension(filename)} Original.png");
+                bmp.Save(copyFile);
+#endif
+
                 float minError = float.MaxValue;
+                string bestEntry = string.Empty;
                 Bitmap bestBmp = null;
 
                 Console.WriteLine($"{Path.GetFileNameWithoutExtension(filename)}:");
-                for (int i = 0; i < DitherPatterns.Length; ++i)
+                foreach (var ditherEntry in DitherPatterns)
                 {
                     Bitmap tmpBmp = new Bitmap(bmp.Width, bmp.Height, PixelFormat.Format32bppArgb);
 
-                    float error = DitherOneImage(bmp, tmpBmp, DitherPatterns[i], transparentColorKey);
-                    Console.WriteLine($" .. {i} = {error} MSQ");
+                    float error = DitherOneImage(bmp, tmpBmp, ditherEntry.Value, transparentColorKey);
+                    Console.WriteLine($" .. {error} MSQ {ditherEntry.Key}");
+
+#if DEBUG
+                    string previewFile = Path.Combine(Path.GetDirectoryName(filename), "preview", $"{Path.GetFileNameWithoutExtension(filename)} Preview ({ditherEntry.Key}).png");
+                    tmpBmp.Save(previewFile);
+#endif
 
                     // If this is the best one, save it
                     if (error < minError)
                     {
                         bestBmp = tmpBmp;
+                        bestEntry = ditherEntry.Key;
                         minError = error;
                     }
                 }
 
                 Assert(bestBmp != null);
 
-                bestBmp.Save(previewFile);
+                string outFile = Path.Combine(Path.GetDirectoryName(filename), "preview", $"{Path.GetFileNameWithoutExtension(filename)} Final ({bestEntry}).png");
+                bestBmp.Save(outFile);
             }
         }
-        
+
         static void Main(string[] args)
         {            
             Directory.CreateDirectory("preview");
