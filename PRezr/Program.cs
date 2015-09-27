@@ -285,8 +285,9 @@ namespace PRezr
                 header.WriteLine($"typedef enum prezr_pack_{packageName}_e {{");
                 foreach (var img in imageInfo)
                 {
-                    header.WriteLine($"  {enumPrefix}{img.Handle},");
+                    header.WriteLine($"  {enumPrefix}{img.Handle}, // {img.Width}x{img.Height} {img.Format}");
                 }
+                header.WriteLine($"  {enumPrefix}COUNT");
                 header.WriteLine($"}} prezr_pack_{packageName}_t;");
                 header.WriteLine();
 
@@ -294,8 +295,11 @@ namespace PRezr
                 header.WriteLine($"#if defined(PREZR_IMPORT) || defined(PREZR_IMPORT_{packageName.ToUpper()}_PACK)");
                 header.WriteLine($"prezr_pack_t prezr_{packageName};");
                 header.WriteLine($"void prezr_load_{packageName}() {{");
-                header.WriteLine($"  int r = prezr_init(&prezr_{packageName}, {resourceID}, {enumPrefix}CHECKSUM);");
-                header.WriteLine($"  if (r != PREZR_OK) APP_LOG(APP_LOG_LEVEL_ERROR, \"PRezr package '{packageName}' failed with code %d\", r);");
+                header.WriteLine($"  int r = prezr_init(&prezr_{packageName}, {resourceID});");
+                header.WriteLine($"  if (r != PREZR_OK)");
+                header.WriteLine($"    APP_LOG(APP_LOG_LEVEL_ERROR, \"PRezr package '{packageName}' failed with code %d\", r);");
+                header.WriteLine($"  if (prezr_{packageName}.numResources != {enumPrefix}COUNT)");
+                header.WriteLine($"    APP_LOG(APP_LOG_LEVEL_ERROR, \"PRezr package '{packageName}' resource count mismatch\");");
                 header.WriteLine("}");
                 header.WriteLine($"void prezr_unload_{packageName}() {{");
                 header.WriteLine($"  prezr_destroy(&prezr_{packageName});");
