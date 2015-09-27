@@ -20,8 +20,6 @@ typedef struct prezr_pack_s {
 
 #define PREZR_NO_CHECKSUM 0
 
-typedef uint32_t prezr_image_index_t;
-
 int prezr_init(prezr_pack_t* pack, uint32_t h, uint32_t checksum);
 void prezr_destroy(prezr_pack_t* pack);
 
