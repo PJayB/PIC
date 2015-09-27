@@ -44,7 +44,7 @@ namespace PRezr
             public PblPixelFormat Format;
         };
 
-        static void Compress2BitPalette(byte[] srcData, out byte[] dstData, out byte[] palette)
+        static void Compress2BitPalette(byte[] srcData, int srcRowStride, out byte[] dstData, out byte[] palette)
         {
             Dictionary<byte, int> colorMap = new Dictionary<byte, int>();
             for (int i = 0; i < srcData.Length; ++i)
@@ -53,32 +53,44 @@ namespace PRezr
                     colorMap.Add(srcData[i], colorMap.Count);
             }
 
+            int numRows = srcData.Length / srcRowStride;
+            Debug.Assert(numRows * srcRowStride == srcData.Length);
             Debug.Assert(colorMap.Count <= 4);
 
-            dstData = new byte[(srcData.Length + 3) / 4];
-            for (int i = 0; i < dstData.Length; i += 4)
+            int dstRowStride = (srcRowStride + 3) / 4;
+
+            dstData = new byte[dstRowStride * numRows];
+            for (int j = 0, srcRowOffset = 0, dstRowOffset = 0;
+                j < numRows;
+                ++j, srcRowOffset += srcRowStride, dstRowOffset += dstRowStride)
             {
-                int index = colorMap[srcData[i]];
-                byte v = (byte)(index << 6);
-
-                if (i+1 < srcData.Length)
+                for (int i = 0; i < srcRowStride; i += 4)
                 {
-                    index = colorMap[srcData[i + 1]];
-                    v |= (byte)(index << 4);
-                }
+                    int index = colorMap[srcData[srcRowOffset + i]];
+                    byte v = (byte)(index << 6);
 
-                if (i + 2 < srcData.Length)
-                {
-                    index = colorMap[srcData[i + 2]];
-                    v |= (byte)(index << 2);
-                }
+                    if (i + 1 < srcRowStride)
+                    {
+                        index = colorMap[srcData[srcRowOffset + i + 1]];
+                        v |= (byte)(index << 4);
+                    }
 
-                if (i + 3 < srcData.Length)
-                {
-                    index = colorMap[srcData[i + 3]];
-                    v |= (byte)(index);
+                    if (i + 2 < srcRowStride)
+                    {
+                        index = colorMap[srcData[srcRowOffset + i + 2]];
+                        v |= (byte)(index << 2);
+                    }
+
+                    if (i + 3 < srcRowStride)
+                    {
+                        index = colorMap[srcData[srcRowOffset + i + 3]];
+                        v |= (byte)(index);
+                    }
+
+                    dstData[dstRowOffset + i / 4] = v;
                 }
             }
+
 
             palette = new byte[colorMap.Count];
             foreach (var kvp in colorMap)
@@ -87,7 +99,7 @@ namespace PRezr
             }
         }
 
-        static void Compress4BitPalette(byte[] srcData, out byte[] dstData, out byte[] palette)
+        static void Compress4BitPalette(byte[] srcData, int srcRowStride, out byte[] dstData, out byte[] palette)
         {
             Dictionary<byte, int> colorMap = new Dictionary<byte, int>();
             for (int i = 0; i < srcData.Length; ++i)
@@ -96,17 +108,28 @@ namespace PRezr
                     colorMap.Add(srcData[i], colorMap.Count);
             }
 
+            int numRows = srcData.Length / srcRowStride;
+            Debug.Assert(numRows * srcRowStride == srcData.Length);
             Debug.Assert(colorMap.Count <= 16);
 
-            dstData = new byte[(srcData.Length + 1) / 2];
-            for (int i = 0; i < dstData.Length; i += 2)
+            int dstRowStride = (srcRowStride + 1) / 2;
+            
+            dstData = new byte[dstRowStride * numRows];
+            for (int j = 0, srcRowOffset = 0, dstRowOffset = 0;
+                j < numRows;
+                ++j, srcRowOffset += srcRowStride, dstRowOffset += dstRowStride)
             {
-                int index = colorMap[srcData[i]];
-                byte v = (byte)(index << 4);
-                if (i+1 < srcData.Length)
+                for (int i = 0; i < srcRowStride; i += 2)
                 {
-                    index = colorMap[srcData[i + 1]];
-                    v |= (byte)(index);
+                    int index = colorMap[srcData[srcRowOffset + i]];
+                    byte v = (byte)(index << 4);
+                    if (i + 1 < srcRowStride)
+                    {
+                        index = colorMap[srcData[srcRowOffset + i + 1]];
+                        v |= (byte)(index);
+                    }
+
+                    dstData[dstRowOffset + i / 2] = v;
                 }
             }
 
@@ -160,7 +183,7 @@ namespace PRezr
                     if (colorHistogram.Count <= 4)
                     {
                         // Encode in 4 bits
-                        Compress2BitPalette(pixels, out pixels, out palette);
+                        Compress2BitPalette(pixels, bmp.Width, out pixels, out palette);
 
                         bi.Palette = palette;
                         bi.Pixels = pixels;
@@ -169,7 +192,7 @@ namespace PRezr
                     else if (colorHistogram.Count <= 16)
                     {
                         // Encode in 4 bits
-                        Compress4BitPalette(pixels, out pixels, out palette);
+                        Compress4BitPalette(pixels, bmp.Width, out pixels, out palette);
 
                         bi.Palette = palette;
                         bi.Pixels = pixels;
@@ -219,7 +242,20 @@ namespace PRezr
                 // Write the image data
                 foreach (BitmapInfo bi in imageInfo)
                 {
-                    ushort rowByteStride = (ushort)bi.Width;
+                    ushort rowByteStride;
+                    switch (bi.Format)
+                    {
+                        case PblPixelFormat.Bit4Palettized:
+                            rowByteStride = (ushort)((bi.Width + 1) / 2);
+                            break;
+                        case PblPixelFormat.Bit2Palettized:
+                            rowByteStride = (ushort)((bi.Width + 3) / 4);
+                            break;
+                        default:
+                            rowByteStride = (ushort)bi.Width;
+                            break;
+                    }
+
                     ushort versionAndFormat = (ushort)((version << 12) | ((int)bi.Format << 1));
                     ushort x = 0, y = 0;
                     ushort width = (ushort)bi.Width;
