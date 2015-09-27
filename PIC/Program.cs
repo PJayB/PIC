@@ -6,6 +6,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using System.IO;
+//using static System.IO.Path;
 
 namespace PIC
 {
@@ -161,14 +162,6 @@ namespace PIC
             public int G;
             public int B;
 
-            public SignedColor(int a)
-            {
-                A = a;
-                R = a;
-                G = a;
-                B = a;
-            }
-
             public SignedColor(int a, int r, int g, int b)
             {
                 A = a;
@@ -184,6 +177,17 @@ namespace PIC
                 G += c.G;
                 B += c.B;
             }
+
+            public float RGBError
+            {
+                get
+                {
+                    float r = R / 255.0f;
+                    float g = G / 255.0f;
+                    float b = B / 255.0f;
+                    return (0.2126f * r * r + 0.7152f * g * g + 0.0722f * b * b);
+                }
+            }
         }
 
         class Ditherer
@@ -191,20 +195,24 @@ namespace PIC
             int _width;
             int _height;
             SignedColor[] _errorMatrix;
+            float _totalSquaredError;
 
             public Ditherer(int width, int height)
             {
                 _width = width;
                 _height = height;
                 _errorMatrix = new SignedColor[width * height];
+                _totalSquaredError = 0;
             }
+
+            public float MeanSquaredError { get { return _totalSquaredError / (float)(_width * _height); } }
 
             private SignedColor GetError(int x, int y)
             {
                 if (x >= 0 && x < _width && y >= 0 && y < _height)
                     return _errorMatrix[y * _width + x];
                 else
-                    return new SignedColor(0);
+                    return new SignedColor();
             }
 
             private void SetError(int x, int y, SignedColor c)
@@ -254,7 +262,7 @@ namespace PIC
                 int mul = pattern.Kernel[y][x];
                 
                 if (mul == 0)
-                    return new SignedColor(0);
+                    return new SignedColor();
                 else
                 {
                     int div = pattern.Divisor;
@@ -293,50 +301,70 @@ namespace PIC
                     }
                 }
 
+                _totalSquaredError += delta.RGBError;
+
                 return q;
             }
         }
+
+        static float DitherOneImage(ImageData srcData, ImageData dstData, DitherPattern pattern, Color transparentColorKey)
+        {
+            Ditherer ditherer = new Ditherer(srcData.Width, srcData.Height);
+            for (int x = 0; x < srcData.Width; x++)
+            {
+                for (int y = 0; y < srcData.Height; y++)
+                {
+                    Color c = srcData.GetPixel(x, y);
+
+                    if (c == transparentColorKey || c.A == 0)
+                    {
+                        dstData.SetPixel(x, y, Color.FromArgb(0));
+                    }
+                    else
+                    {
+                        dstData.SetPixel(x, y, ditherer.Dither(x, y, c, pattern));
+                    }
+                }
+            }
+
+            return ditherer.MeanSquaredError;
+        }
+
+        static readonly DitherPattern[] DitherPatterns = new DitherPattern[]
+        {
+            FloydSteinbergDither,
+            JarvisJudiceNinkeDither,
+            AtkinsonDither,
+            TwoRowSierraDither,
+            SierraDither,
+            SierraLiteDither
+        };
 
         static void DoOneImage(string filename, Color transparentColorKey)
         {
             string previewFile = Path.Combine(Path.GetDirectoryName(filename), "preview", Path.GetFileNameWithoutExtension(filename) + "_preview.png");
 
-            HashSet<Color> colorHistagram = new HashSet<Color>();
-
+            // TODO: try-catch this
             Bitmap bmp = Bitmap.FromFile(filename) as Bitmap;
+            // TODO: make this create a new bitmap with the right format
             Bitmap previewBmp = Bitmap.FromFile(filename) as Bitmap;
-            Ditherer ditherer = new Ditherer(bmp.Width, bmp.Height);
+
+            float[] errors = new float[DitherPatterns.Length];
 
             using (ImageData srcData = new ImageData(bmp, ImageLockMode.ReadOnly))
             {
                 using (ImageData previewData = new ImageData(previewBmp, ImageLockMode.WriteOnly))
                 {
-                    for (int x = 0; x < srcData.Width; x++)
+                    Console.WriteLine($"{Path.GetFileNameWithoutExtension(filename)}:");
+                    for (int i = 0; i < DitherPatterns.Length; ++i)
                     {
-                        for (int y = 0; y < srcData.Height; y++)
-                        {
-                            Color c = srcData.GetPixel(x, y);
-
-                            if (!colorHistagram.Contains(c))
-                                colorHistagram.Add(c);
-
-                            if (c == transparentColorKey || c.A == 0)
-                            {
-                                previewData.SetPixel(x, y, Color.FromArgb(0));
-                            }
-                            else
-                            {
-                                previewData.SetPixel(x, y, ditherer.Dither(x, y, c, FloydSteinbergDither));
-                            }
-                        }
+                        errors[i] = DitherOneImage(srcData, previewData, DitherPatterns[i], transparentColorKey);
+                        Console.WriteLine($" .. {i} = {errors[i]} MSQ");
                     }
                 }
             }
             
             previewBmp.Save(previewFile);
-
-            // Statistics
-            Console.WriteLine($"{Path.GetFileNameWithoutExtension(filename)} contains {colorHistagram.Count} unique colors.");
         }
         
         static void Main(string[] args)
