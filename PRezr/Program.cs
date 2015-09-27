@@ -32,7 +32,7 @@ namespace PRezr
             public ushort Width;
             public ushort Height;
             public uint Offset;
-            public byte[] Pixels8Bit;
+            public byte[] Pixels;
             public HashSet<byte> ColorHistogram;
         };
 
@@ -75,7 +75,7 @@ namespace PRezr
                     bi.Width = (ushort)bmp.Width;
                     bi.Offset = bytesWritten;
                     bi.ColorHistogram = colorHistogram;
-                    bi.Pixels8Bit = pixels;
+                    bi.Pixels = pixels;
                     imageInfo.Add(bi);
 
                     bytesWritten += (uint)(12 + pixels.Length);
@@ -105,7 +105,7 @@ namespace PRezr
                     w.Write(width);
                     w.Write(height);
 
-                    w.Write(bi.Pixels8Bit);
+                    w.Write(bi.Pixels);
                 }
             }
 
@@ -154,7 +154,7 @@ namespace PRezr
                 header.WriteLine($"  for (size_t i = 0; i < {enumPrefix}COUNT; ++i) {{");
                 header.WriteLine("    const uint8_t* data = prezr_resource_blob + prezr_resource_offsets[i];");
                 header.WriteLine("    prezr_embedded_bitmaps[i].bitmap = gbitmap_create_with_data(data);");
-                header.WriteLine("    if (prezr_embedded_bitmaps[i].bitmap == NULL) {{");
+                header.WriteLine("    if (prezr_embedded_bitmaps[i].bitmap == NULL) {");
                 header.WriteLine("      APP_LOG(APP_LOG_LEVEL_DEBUG, \"[PREZR] Failed to create image %u at offset %u\", i, prezr_resource_offsets[i]);");
                 header.WriteLine("      return (i+1);");
                 header.WriteLine("    }");
