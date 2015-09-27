@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Drawing;
 using System.Drawing.Imaging;
 using System.IO;
@@ -40,15 +41,46 @@ namespace PRezr
             public ushort Height;
             public uint Offset;
             public byte[] Pixels;
+            public byte[] Palette;
             public PblPixelFormat Format;
-            public HashSet<byte> ColorHistogram;
         };
+
+        static void Compress4BitPalette(byte[] srcData, out byte[] dstData, out byte[] palette)
+        {
+            Dictionary<byte, int> colorMap = new Dictionary<byte, int>();
+            for (int i = 0; i < srcData.Length; ++i)
+            {
+                if (!colorMap.ContainsKey(srcData[i]))
+                    colorMap.Add(srcData[i], colorMap.Count);
+            }
+
+            Debug.Assert(colorMap.Count <= 16);
+
+            dstData = new byte[(srcData.Length + 1) / 2];
+            for (int i = 0; i < dstData.Length; i += 2)
+            {
+                int index = colorMap[srcData[i]];
+                byte v = (byte)(index << 4);
+                if (i < srcData.Length)
+                {
+                    index = colorMap[srcData[i + 1]];
+                    v |= (byte)(index);
+                }
+            }
+
+            palette = new byte[colorMap.Count];
+            foreach (var kvp in colorMap)
+            {
+                palette[kvp.Value] = kvp.Key;
+            }
+        }
 
         static void Main(string[] args)
         {
             List<BitmapInfo> imageInfo = new List<BitmapInfo>();
             const string enumPrefix = "PREZR_IMAGE_INDEX_";
             const int version = 1;
+            const int headerSize = 12;
             uint blobSize = 0;
 
             var files = Directory.EnumerateFiles(".", "*.png");
@@ -76,17 +108,36 @@ namespace PRezr
                         }
                     }
 
+                    Console.WriteLine($"{imageName} has {colorHistogram.Count} colors.");
+
+                    byte[] palette = null;
                     BitmapInfo bi = new BitmapInfo();
+
+                    if (colorHistogram.Count <= 16)
+                    {
+                        // Encode in 4 bits
+                        Compress4BitPalette(pixels, out pixels, out palette);
+
+                        bi.Palette = palette;
+                        bi.Pixels = pixels;
+                        bi.Format = PblPixelFormat.Bit4Palettized;
+                    }
+                    else
+                    {
+                        // Encode in 8 bits
+                        bi.Pixels = pixels;
+                        bi.Format = PblPixelFormat.Bit8;
+                    }
+
                     bi.Handle = imageName;
                     bi.Height = (ushort)bmp.Height;
                     bi.Width = (ushort)bmp.Width;
                     bi.Offset = bytesWritten;
-                    bi.ColorHistogram = colorHistogram;
-                    bi.Pixels = pixels;
-                    bi.Format = PblPixelFormat.Bit8;
                     imageInfo.Add(bi);
 
-                    bytesWritten += (uint)(12 + pixels.Length);
+                    int pixelDataSize = pixels.Length;
+                    int paletteSize = (palette != null) ? palette.Length : 0;
+                    bytesWritten += (uint)(headerSize + pixelDataSize + paletteSize);
                 }
 
                 blobSize = bytesWritten;
@@ -114,6 +165,9 @@ namespace PRezr
                     w.Write(height);
 
                     w.Write(bi.Pixels);
+
+                    if (bi.Palette != null)
+                        w.Write(bi.Palette);
                 }
             }
 
