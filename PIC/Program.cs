@@ -6,69 +6,12 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using System.IO;
-//using static System.IO.Path;
+using static System.Diagnostics.Debug;
 
 namespace PIC
 {
     class Program
     {
-        class ImageData : IDisposable
-        {
-            private Bitmap _bitmap;
-            private BitmapData _data;
-            private ImageLockMode _mode;
-
-            public ImageData(Bitmap bmp, ImageLockMode mode)
-            {
-                _bitmap = bmp;
-                _mode = mode;
-                _data = bmp.LockBits(new Rectangle(0, 0, bmp.Width, bmp.Height), mode, bmp.PixelFormat);
-            }
-
-            public void Dispose()
-            {
-                _bitmap.UnlockBits(_data);
-            }
-
-            private Bitmap Bitmap { get { return _bitmap; } }
-            public int Width { get { return _data.Width; } }
-            public int Height { get { return _data.Height; } }
-
-            public Color GetPixel(int x, int y)
-            {
-                if (_mode == ImageLockMode.WriteOnly)
-                    throw new Exception("Can't read from this image. It is writeonly.");
-
-                unsafe
-                {
-                    int columnOffset = x * 4;
-                    byte* row = (byte*)_data.Scan0 + (y * _data.Stride);
-                    byte B = row[columnOffset];
-                    byte G = row[columnOffset + 1];
-                    byte R = row[columnOffset + 2];
-                    byte alpha = row[columnOffset + 3];
-
-                    return Color.FromArgb(alpha, R, G, B);
-                }
-            }
-
-            public void SetPixel(int x, int y, Color c)
-            {
-                if (_mode == ImageLockMode.ReadOnly)
-                    throw new Exception("Can't write to this image. It is readonly.");
-
-                unsafe
-                {
-                    int columnOffset = x * 4;
-                    byte* row = (byte*)_data.Scan0 + (y * _data.Stride);
-                    row[columnOffset] = c.B;
-                    row[columnOffset + 1] = c.G;
-                    row[columnOffset + 2] = c.R;
-                    row[columnOffset + 3] = c.A;
-                }
-            }
-        }
-
         class DitherPattern
         {
             public readonly int Divisor;
@@ -98,6 +41,7 @@ namespace PIC
             }
         };
 
+        #region static readonly dither patterns
         static readonly DitherPattern FloydSteinbergDither = new DitherPattern(
             16,
             new int[][]
@@ -154,6 +98,7 @@ namespace PIC
                 new int[] { 1, 1, 0 }
             }
         );
+        #endregion
 
         struct SignedColor
         {
@@ -205,7 +150,7 @@ namespace PIC
                 _totalSquaredError = 0;
             }
 
-            public float MeanSquaredError { get { return _totalSquaredError / (float)(_width * _height); } }
+            public float MeanSquaredError => _totalSquaredError / (float)(_width * _height);
 
             private SignedColor GetError(int x, int y)
             {
@@ -307,7 +252,7 @@ namespace PIC
             }
         }
 
-        static float DitherOneImage(ImageData srcData, ImageData dstData, DitherPattern pattern, Color transparentColorKey)
+        static float DitherOneImage(Bitmap srcData, Bitmap dstData, DitherPattern pattern, Color transparentColorKey)
         {
             Ditherer ditherer = new Ditherer(srcData.Width, srcData.Height);
             for (int x = 0; x < srcData.Width; x++)
@@ -344,27 +289,31 @@ namespace PIC
         {
             string previewFile = Path.Combine(Path.GetDirectoryName(filename), "preview", Path.GetFileNameWithoutExtension(filename) + "_preview.png");
 
-            // TODO: try-catch this
-            Bitmap bmp = Bitmap.FromFile(filename) as Bitmap;
-            // TODO: make this create a new bitmap with the right format
-            Bitmap previewBmp = Bitmap.FromFile(filename) as Bitmap;
-
-            float[] errors = new float[DitherPatterns.Length];
-
-            using (ImageData srcData = new ImageData(bmp, ImageLockMode.ReadOnly))
+            using (Bitmap bmp = Bitmap.FromFile(filename) as Bitmap)
             {
-                using (ImageData previewData = new ImageData(previewBmp, ImageLockMode.WriteOnly))
+                float minError = float.MaxValue;
+                Bitmap bestBmp = null;
+
+                Console.WriteLine($"{Path.GetFileNameWithoutExtension(filename)}:");
+                for (int i = 0; i < DitherPatterns.Length; ++i)
                 {
-                    Console.WriteLine($"{Path.GetFileNameWithoutExtension(filename)}:");
-                    for (int i = 0; i < DitherPatterns.Length; ++i)
+                    Bitmap tmpBmp = new Bitmap(bmp.Width, bmp.Height, PixelFormat.Format32bppArgb);
+
+                    float error = DitherOneImage(bmp, tmpBmp, DitherPatterns[i], transparentColorKey);
+                    Console.WriteLine($" .. {i} = {error} MSQ");
+
+                    // If this is the best one, save it
+                    if (error < minError)
                     {
-                        errors[i] = DitherOneImage(srcData, previewData, DitherPatterns[i], transparentColorKey);
-                        Console.WriteLine($" .. {i} = {errors[i]} MSQ");
+                        bestBmp = tmpBmp;
+                        minError = error;
                     }
                 }
+
+                Assert(bestBmp != null);
+
+                bestBmp.Save(previewFile);
             }
-            
-            previewBmp.Save(previewFile);
         }
         
         static void Main(string[] args)
@@ -379,12 +328,26 @@ namespace PIC
                 var files = Directory.EnumerateFiles(".", "*.png");
                 foreach (var file in files)
                 {
-                    DoOneImage(file, transparentColorKey);
+                    try
+                    {
+                        DoOneImage(file, transparentColorKey);
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"{Path.GetFileNameWithoutExtension(file)}: ERROR: {ex.Message}");
+                    }
                 }
             }
             else
             {
-                DoOneImage(args[0], transparentColorKey);
+                try
+                {
+                    DoOneImage(args[0], transparentColorKey);
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"{Path.GetFileNameWithoutExtension(args[0])}: ERROR: {ex.Message}");
+                }
             }
         }
     }
