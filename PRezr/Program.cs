@@ -26,76 +26,87 @@ namespace PRezr
                            (QuantizeChannel(c.B)));
         }
 
-        struct BitmapInfo
+        class BitmapInfo
         {
             public string Handle;
             public ushort Width;
             public ushort Height;
             public uint Offset;
+            public byte[] Pixels8Bit;
+            public HashSet<byte> ColorHistogram;
         };
 
         static void Main(string[] args)
         {
             List<BitmapInfo> imageInfo = new List<BitmapInfo>();
-            const string handlePrefix = "PREZR_IMAGE_";
             const string enumPrefix = "PREZR_IMAGE_INDEX_";
+            const int version = 1;
+            const int bitmapFormat8Bit = 1; // 8 bit
             uint blobSize = 0;
+
+            var files = Directory.EnumerateFiles(".", "*.png");
+            foreach (var filename in files)
+            {
+                uint bytesWritten = sizeof(UInt32);
+
+                using (Bitmap bmp = Bitmap.FromFile(filename) as Bitmap)
+                {
+                    string imageName = Path.GetFileNameWithoutExtension(filename).ToUpper();
+
+                    HashSet<byte> colorHistogram = new HashSet<byte>();
+
+                    byte[] pixels = new byte[bmp.Width * bmp.Height];
+
+                    for (int y = 0; y < bmp.Height; ++y)
+                    {
+                        for (int x = 0; x < bmp.Width; ++x)
+                        {
+                            byte p = PackPixel(bmp.GetPixel(x, y));
+                            pixels[y * bmp.Width + x] = p;
+
+                            if (!colorHistogram.Contains(p))
+                                colorHistogram.Add(p);
+                        }
+                    }
+
+                    BitmapInfo bi = new BitmapInfo();
+                    bi.Handle = imageName;
+                    bi.Height = (ushort)bmp.Height;
+                    bi.Width = (ushort)bmp.Width;
+                    bi.Offset = bytesWritten;
+                    bi.ColorHistogram = colorHistogram;
+                    bi.Pixels8Bit = pixels;
+                    imageInfo.Add(bi);
+
+                    bytesWritten += (uint)(12 + pixels.Length);
+                }
+
+                blobSize = bytesWritten;
+            }
 
             UInt32 timeStamp = (UInt32)(DateTime.Now.ToFileTimeUtc() & 0xFFFFFFFF);
 
             using (BinaryWriter w = new BinaryWriter(new FileStream("prezr.blob", FileMode.Create, FileAccess.Write, FileShare.Write)))
             {
                 w.Write(timeStamp);
-                uint bytesWritten = sizeof(UInt32);
 
-                var files = Directory.EnumerateFiles(".", "*.png");
-                foreach (var filename in files)
+                foreach (BitmapInfo bi in imageInfo)
                 {
-                    using (Bitmap bmp = Bitmap.FromFile(filename) as Bitmap)
-                    {
-                        string imageName = Path.GetFileNameWithoutExtension(filename).ToUpper();
+                    ushort rowByteStride = (ushort)bi.Width;
+                    ushort versionAndFormat = (ushort)((version << 12) | (bitmapFormat8Bit << 1));
+                    ushort x = 0, y = 0;
+                    ushort width = (ushort)bi.Width;
+                    ushort height = (ushort)bi.Height;
 
-                        BitmapInfo bi = new BitmapInfo();
-                        bi.Handle = imageName;
-                        bi.Height = (ushort)bmp.Height;
-                        bi.Width = (ushort)bmp.Width;
-                        bi.Offset = bytesWritten;
-                        imageInfo.Add(bi);
+                    w.Write(rowByteStride);
+                    w.Write(versionAndFormat);
+                    w.Write(x);
+                    w.Write(y);
+                    w.Write(width);
+                    w.Write(height);
 
-                        string handle = handlePrefix + imageName;
-                        int version = 1;
-                        int bitmapFormat = 1; // 8 bit
-
-                        ushort rowByteStride = (ushort)bmp.Width;
-                        ushort versionAndFormat = (ushort)((version << 12) | (bitmapFormat << 1));
-                        ushort x = 0, y = 0;
-                        ushort width = (ushort)bmp.Width;
-                        ushort height = (ushort)bmp.Height;
-
-                        w.Write(rowByteStride);
-                        w.Write(versionAndFormat);
-                        w.Write(x);
-                        w.Write(y);
-                        w.Write(width);
-                        w.Write(height);
-
-                        byte[] pixels = new byte[bmp.Width * bmp.Height];
-
-                        for (y = 0; y < bmp.Height; ++y)
-                        {
-                            for (x = 0; x < bmp.Width; ++x)
-                            {
-                                pixels[y * bmp.Width + x] = PackPixel(bmp.GetPixel(x, y));
-                            }
-                        }
-
-                        w.Write(pixels);
-
-                        bytesWritten += (uint)( 12 + pixels.Length );
-                    }
+                    w.Write(bi.Pixels8Bit);
                 }
-
-                blobSize = bytesWritten;
             }
 
             using (StreamWriter header = new StreamWriter("prezr.c"))
