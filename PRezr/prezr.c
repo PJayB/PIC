@@ -2,11 +2,11 @@
 #include "prezr.h"
 
 typedef struct prezr_pack_header_s {
-    uint32_t checksum;
+    uint32_t reserved;
     uint32_t numResources;
 } prezr_pack_header_t;
 
-int prezr_init(prezr_pack_t* pack, uint32_t rid, uint32_t checksum) {
+int prezr_init(prezr_pack_t* pack, uint32_t rid) {
     ResHandle h = resource_get_handle(rid);
     uint8_t* blob = NULL;
     prezr_pack_header_t* pack_header = NULL;
@@ -32,11 +32,6 @@ int prezr_init(prezr_pack_t* pack, uint32_t rid, uint32_t checksum) {
 
     pack_header = (prezr_pack_header_t*) blob;
 
-    if (checksum != PREZR_NO_CHECKSUM && pack_header->checksum != checksum) {
-        APP_LOG(APP_LOG_LEVEL_DEBUG, "[PREZR] Version fail: file %u vs expected %u", (size_t) pack_header->checksum, (size_t) checksum);
-        return PREZR_VERSION_FAIL;
-    }
-
     // Fix up the header
     pack->header = pack_header;
     pack->numResources = pack_header->numResources;
@@ -60,7 +55,10 @@ int prezr_init(prezr_pack_t* pack, uint32_t rid, uint32_t checksum) {
 
 void prezr_destroy(prezr_pack_t* pack) {
     for (uint32_t i = 0; i < pack->numResources; ++i) {
-        gbitmap_destroy(pack->resources[i].bitmap);
+        if (pack->resources[i].bitmap != NULL) {
+            gbitmap_destroy(pack->resources[i].bitmap);
+            pack->resources[i].bitmap = NULL;
+        }
     }
     free(pack->header);
     memset(pack, 0, sizeof(*pack));

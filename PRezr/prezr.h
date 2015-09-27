@@ -18,8 +18,6 @@ typedef struct prezr_pack_s {
 #define PREZR_OUT_OF_MEMORY -3
 #define PREZR_ZERO_SIZE_BLOB -4
 
-#define PREZR_NO_CHECKSUM 0
-
-int prezr_init(prezr_pack_t* pack, uint32_t h, uint32_t checksum);
+int prezr_init(prezr_pack_t* pack, uint32_t h);
 void prezr_destroy(prezr_pack_t* pack);
 
