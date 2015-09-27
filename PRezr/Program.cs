@@ -26,16 +26,6 @@ namespace PRezr
                            (QuantizeChannel(c.B)));
         }
 
-        class BitmapInfo
-        {
-            public string Handle;
-            public ushort Width;
-            public ushort Height;
-            public uint Offset;
-            public byte[] Pixels;
-            public HashSet<byte> ColorHistogram;
-        };
-
         enum PblPixelFormat
         {
             Bit8 = 1,
@@ -43,12 +33,22 @@ namespace PRezr
             Bit4Palettized = 4
         }
 
+        class BitmapInfo
+        {
+            public string Handle;
+            public ushort Width;
+            public ushort Height;
+            public uint Offset;
+            public byte[] Pixels;
+            public PblPixelFormat Format;
+            public HashSet<byte> ColorHistogram;
+        };
+
         static void Main(string[] args)
         {
             List<BitmapInfo> imageInfo = new List<BitmapInfo>();
             const string enumPrefix = "PREZR_IMAGE_INDEX_";
             const int version = 1;
-            const PblPixelFormat bitmapFormat = PblPixelFormat.Bit8; // 8 bit
             uint blobSize = 0;
 
             var files = Directory.EnumerateFiles(".", "*.png");
@@ -83,6 +83,7 @@ namespace PRezr
                     bi.Offset = bytesWritten;
                     bi.ColorHistogram = colorHistogram;
                     bi.Pixels = pixels;
+                    bi.Format = PblPixelFormat.Bit8;
                     imageInfo.Add(bi);
 
                     bytesWritten += (uint)(12 + pixels.Length);
@@ -100,7 +101,7 @@ namespace PRezr
                 foreach (BitmapInfo bi in imageInfo)
                 {
                     ushort rowByteStride = (ushort)bi.Width;
-                    ushort versionAndFormat = (ushort)((version << 12) | ((int)bitmapFormat << 1));
+                    ushort versionAndFormat = (ushort)((version << 12) | ((int)bi.Format << 1));
                     ushort x = 0, y = 0;
                     ushort width = (ushort)bi.Width;
                     ushort height = (ushort)bi.Height;
