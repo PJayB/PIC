@@ -276,27 +276,47 @@ namespace PRezr
                 }
             }
 
-            using (StreamWriter header = new StreamWriter($"prezr.{packageName}.h"))
+            using (StreamWriter header = new StreamWriter("prezr.packages.h", true))
             {
-                header.WriteLine("#include <pebble.h>");
-                header.WriteLine("#include \"prezr.h\"");
-                header.WriteLine();
-
+                header.WriteLine($"// ------------------------- {packageName} -------------------------");
                 header.WriteLine($"#define {enumPrefix}CHECKSUM 0x{timeStamp:X}");
                 header.WriteLine();
 
-                header.WriteLine($"enum prezr_pack_{packageName} = {{");
+                header.WriteLine($"typedef enum prezr_pack_{packageName}_e {{");
                 foreach (var img in imageInfo)
                 {
                     header.WriteLine($"  {enumPrefix}{img.Handle},");
                 }
-                header.WriteLine("};");
+                header.WriteLine($"}} prezr_pack_{packageName}_t;");
+                header.WriteLine();
+
+                string resourceID = $"RESOURCE_ID_{enumPrefix}PACK";
+                header.WriteLine($"#if defined(PREZR_IMPORT) || defined(PREZR_IMPORT_{packageName.ToUpper()}_PACK)");
+                header.WriteLine($"prezr_pack_t prezr_{packageName};");
+                header.WriteLine($"void prezr_load_{packageName}() {{");
+                header.WriteLine($"  int r = prezr_init(&prezr_{packageName}, {resourceID}, {enumPrefix}CHECKSUM);");
+                header.WriteLine($"  if (r != PREZR_OK) APP_LOG(APP_LOG_LEVEL_ERROR, \"PRezr package '{packageName}' failed with code %d\", r);");
+                header.WriteLine("}");
+                header.WriteLine($"void prezr_unload_{packageName}() {{");
+                header.WriteLine($"  prezr_destroy(&prezr_{packageName});");
+                header.WriteLine("}");
+                header.WriteLine("#else");
+                header.WriteLine($"extern prezr_pack_t prezr_{packageName};");
+                header.WriteLine($"extern void prezr_load_{packageName}();");
+                header.WriteLine($"extern void prezr_unload_{packageName}();");
+                header.WriteLine("#endif // PREZR_IMPORT");
                 header.WriteLine();
             }
         }
 
         static void Main(string[] args)
         {
+            using (StreamWriter header = new StreamWriter("prezr.packages.h"))
+            {
+                header.WriteLine("#pragma once");
+                header.WriteLine();
+            }
+
             var subdirs = Directory.EnumerateDirectories(".");
             foreach (var dir in subdirs)
             {
