@@ -1,0 +1,7 @@
+print.xps
+bin
+obj
+*.opensdf
+*.sdf
+*.user
+*.suo
