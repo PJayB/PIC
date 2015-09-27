@@ -323,13 +323,31 @@ namespace PIC
             { "SierraLite", SierraLiteDither }
         };
 
+        class FileNameFactory
+        {
+            public static void Initialize()
+            {
+                Directory.CreateDirectory("final");
+                Directory.CreateDirectory("preview");
+            }
+
+            public static string MakePreviewFilename(string original, string differentiator)
+            {
+                return Path.Combine(Path.GetDirectoryName(original), "preview", $"{Path.GetFileNameWithoutExtension(original)} {differentiator}{Path.GetExtension(original)}");
+            }
+
+            public static string MakeFinalFilename(string original)
+            {
+                return Path.Combine(Path.GetDirectoryName(original), "final", Path.GetFileNameWithoutExtension(original) + Path.GetExtension(original));
+            }
+        }
+
         static void DoOneImage(string filename, Color transparentColorKey)
         {
             using (Bitmap bmp = Bitmap.FromFile(filename) as Bitmap)
             {
 #if DEBUG
-                string copyFile = Path.Combine(Path.GetDirectoryName(filename), "preview", $"{Path.GetFileNameWithoutExtension(filename)} Original.png");
-                bmp.Save(copyFile);
+                bmp.Save(FileNameFactory.MakePreviewFilename(filename, "Original"));
 #endif
 
                 float minError = float.MaxValue;
@@ -345,8 +363,7 @@ namespace PIC
                     Console.WriteLine($" .. {error} MSQ {ditherEntry.Key}");
 
 #if DEBUG
-                    string previewFile = Path.Combine(Path.GetDirectoryName(filename), "preview", $"{Path.GetFileNameWithoutExtension(filename)} Preview ({ditherEntry.Key}).png");
-                    tmpBmp.Save(previewFile);
+                    tmpBmp.Save(FileNameFactory.MakePreviewFilename(filename, $"Preview ({ditherEntry.Key})"));
 #endif
 
                     // If this is the best one, save it
@@ -359,15 +376,17 @@ namespace PIC
                 }
 
                 Assert(bestBmp != null);
-
-                string outFile = Path.Combine(Path.GetDirectoryName(filename), "preview", $"{Path.GetFileNameWithoutExtension(filename)} Final ({bestEntry}).png");
-                bestBmp.Save(outFile);
+                
+                bestBmp.Save(FileNameFactory.MakeFinalFilename(filename));
+#if DEBUG
+                bestBmp.Save(FileNameFactory.MakePreviewFilename(filename, $"Final ({bestEntry})"));
+#endif
             }
         }
 
         static void Main(string[] args)
-        {            
-            Directory.CreateDirectory("preview");
+        {
+            FileNameFactory.Initialize();
 
             Color transparentColorKey = Color.FromArgb(255, 0, 255, 255);
 
