@@ -333,12 +333,18 @@ namespace PIC
 
             public static string MakePreviewFilename(string original, string differentiator)
             {
-                return Path.Combine(Path.GetDirectoryName(original), "preview", $"{Path.GetFileNameWithoutExtension(original)} {differentiator}{Path.GetExtension(original)}");
+                original = original.Replace("\\sources\\", "\\preview\\");
+                string fn = Path.Combine(Path.GetDirectoryName(original), $"{Path.GetFileNameWithoutExtension(original)} {differentiator}{Path.GetExtension(original)}");
+                Directory.CreateDirectory(Path.GetDirectoryName(fn));
+                return fn;
             }
 
             public static string MakeFinalFilename(string original)
             {
-                return Path.Combine(Path.GetDirectoryName(original), "final", Path.GetFileNameWithoutExtension(original) + Path.GetExtension(original));
+                original = original.Replace("\\sources\\", "\\final\\");
+                string fn = Path.Combine(Path.GetDirectoryName(original), Path.GetFileNameWithoutExtension(original) + Path.GetExtension(original));
+                Directory.CreateDirectory(Path.GetDirectoryName(fn));
+                return fn;
             }
         }
 
@@ -393,7 +399,7 @@ namespace PIC
             // Enumerate the current directory
             if (args.Length == 0)
             {
-                var files = Directory.EnumerateFiles(".", "*.png");
+                var files = Directory.EnumerateFiles(".\\sources", "*.png", SearchOption.AllDirectories);
                 foreach (var file in files)
                 {
                     try
