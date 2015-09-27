@@ -9,32 +9,21 @@ namespace PRezr
 {
     class Program
     {
-        static string QuantizeChannel(int c)
+        static int QuantizeChannel(int c)
         {
             // 0, 85, 170, 255
-            if (c < 85) return "00";
-            else if (c < 170) return "01";
-            else if (c < 255) return "10";
-            else return "11";
+            if (c < 85) return 0;
+            else if (c < 170) return 1;
+            else if (c < 255) return 2;
+            else return 3;
         }
 
-        static void WritePixel(StreamWriter w, Color c)
+        static byte PackPixel(Color c)
         {
-            w.Write("0b");
-            w.Write(QuantizeChannel(c.A));
-            w.Write(QuantizeChannel(c.R));
-            w.Write(QuantizeChannel(c.G));
-            w.Write(QuantizeChannel(c.B));
-        }
-
-        static byte LoWord(ushort s)
-        {
-            return (byte) s;
-        }
-
-        static byte HiWord(ushort s)
-        {
-            return (byte)(s >> 8);
+            return (byte)( (QuantizeChannel(c.A) << 6) |
+                           (QuantizeChannel(c.R) << 4) |
+                           (QuantizeChannel(c.G) << 2) |
+                           (QuantizeChannel(c.B)));
         }
 
         struct BitmapInfo
@@ -42,19 +31,22 @@ namespace PRezr
             public string Handle;
             public ushort Width;
             public ushort Height;
+            public uint Offset;
         };
 
         static void Main(string[] args)
         {
             List<BitmapInfo> imageInfo = new List<BitmapInfo>();
-            const string handlePrefix = "PBI_IMAGE_";
-            const string enumPrefix = "PBI_IMAGE_INDEX_";
+            const string handlePrefix = "PREZR_IMAGE_";
+            const string enumPrefix = "PREZR_IMAGE_INDEX_";
+            uint blobSize = 0;
 
-            using (StreamWriter header = new StreamWriter("prezr.c"))
+            UInt32 timeStamp = (UInt32)(DateTime.Now.ToFileTimeUtc() & 0xFFFFFFFF);
+
+            using (BinaryWriter w = new BinaryWriter(new FileStream("prezr.blob", FileMode.Create, FileAccess.Write, FileShare.Write)))
             {
-                header.WriteLine("#include <pebble.h>");
-                header.WriteLine("#include \"prezr.h\"");
-                header.WriteLine();
+                w.Write(timeStamp);
+                uint bytesWritten = sizeof(UInt32);
 
                 var files = Directory.EnumerateFiles(".", "*.png");
                 foreach (var filename in files)
@@ -66,42 +58,61 @@ namespace PRezr
                         BitmapInfo bi = new BitmapInfo();
                         bi.Handle = imageName;
                         bi.Height = (ushort)bmp.Height;
-                        bi.Width = (ushort) bmp.Width;
+                        bi.Width = (ushort)bmp.Width;
+                        bi.Offset = bytesWritten;
                         imageInfo.Add(bi);
 
                         string handle = handlePrefix + imageName;
-
-                        ushort rowByteStride = (ushort) bmp.Width;
                         int version = 1;
                         int bitmapFormat = 1; // 8 bit
-                        ushort versionAndFormat = (ushort) ((version << 12) | (bitmapFormat << 1));
-                        header.WriteLine($"static const uint8_t {handle}[] = {{");
-                        header.WriteLine($"  0x{LoWord(rowByteStride):X2}, 0x{HiWord(rowByteStride):X2}, // rowStrideBytes = {rowByteStride}");
-                        header.WriteLine($"  0x{LoWord(versionAndFormat):X2}, 0x{HiWord(versionAndFormat):X2}, // version = {version}, bitmap format = {bitmapFormat}");
-                        header.WriteLine($"  0x00, 0x00, // x");
-                        header.WriteLine($"  0x00, 0x00, // y");
-                        header.WriteLine($"  0x{LoWord((ushort)bmp.Width):X2}, 0x{HiWord((ushort)bmp.Width):X2}, // width = {bmp.Width}");
-                        header.WriteLine($"  0x{LoWord((ushort)bmp.Height):X2}, 0x{HiWord((ushort)bmp.Height):X2}, // height = {bmp.Height}");
-                        header.WriteLine($"  // data = {{");
-                        
-                        for (var y = 0; y < bmp.Height; ++y)
+
+                        ushort rowByteStride = (ushort)bmp.Width;
+                        ushort versionAndFormat = (ushort)((version << 12) | (bitmapFormat << 1));
+                        ushort x = 0, y = 0;
+                        ushort width = (ushort)bmp.Width;
+                        ushort height = (ushort)bmp.Height;
+
+                        w.Write(rowByteStride);
+                        w.Write(versionAndFormat);
+                        w.Write(x);
+                        w.Write(y);
+                        w.Write(width);
+                        w.Write(height);
+
+                        byte[] pixels = new byte[bmp.Width * bmp.Height];
+
+                        for (y = 0; y < bmp.Height; ++y)
                         {
-                            header.Write("    ");
-                            for (var x = 0; x < bmp.Width; ++x)
+                            for (x = 0; x < bmp.Width; ++x)
                             {
-                                WritePixel(header, bmp.GetPixel(x, y));
-                                header.Write(", ");
+                                pixels[y * bmp.Width + x] = PackPixel(bmp.GetPixel(x, y));
                             }
-                            header.WriteLine();
                         }
 
-                        header.WriteLine("  //}");
-                        header.WriteLine("};");
-                        header.WriteLine();
+                        w.Write(pixels);
+
+                        bytesWritten += (uint)( 12 + pixels.Length );
                     }
                 }
 
-                header.WriteLine($"static GBitmap* prezr_embedded_bitmaps[{enumPrefix}COUNT] =");
+                blobSize = bytesWritten;
+            }
+
+            using (StreamWriter header = new StreamWriter("prezr.c"))
+            {
+                header.WriteLine("#include <pebble.h>");
+                header.WriteLine("#include \"prezr.h\"");
+                header.WriteLine();
+
+                header.WriteLine($"static const size_t prezr_resource_offsets[{enumPrefix}COUNT] = {{");
+                foreach (var img in imageInfo)
+                {
+                    header.WriteLine($"  {img.Offset}, // {img.Handle}");
+                }
+                header.WriteLine("};");
+                header.WriteLine();
+
+                header.WriteLine($"static prezr_bitmap_t prezr_embedded_bitmaps[{enumPrefix}COUNT] = {{");
                 foreach (var img in imageInfo)
                 {
                     header.WriteLine($"  {{ {img.Width}, {img.Height}, NULL }}, // {img.Handle}");
@@ -109,19 +120,43 @@ namespace PRezr
                 header.WriteLine("};");
                 header.WriteLine();
 
-                header.WriteLine("void prezr_init() {");
-                foreach (var img in imageInfo)
-                {
-                    header.WriteLine($"  prezr_embedded_bitmaps[{enumPrefix}{img.Handle}].bitmap = gbitmap_create_with_data({handlePrefix}{img.Handle});");
-                }
+                header.WriteLine($"const size_t prezr_resource_id = {timeStamp}U;");
+                header.WriteLine($"const size_t prezr_resource_blob_size = {blobSize};");
+                header.WriteLine("static uint8_t* prezr_resource_blob = NULL;");
+                header.WriteLine();
+
+                header.WriteLine("int prezr_init(uint32_t rid) {");
+                header.WriteLine("  ResHandle h = resource_get_handle(rid);");
+                header.WriteLine("  prezr_resource_blob = (uint8_t*) malloc(prezr_resource_blob_size);");
+                header.WriteLine("  if (prezr_resource_blob == NULL) {");
+                header.WriteLine("    APP_LOG(APP_LOG_LEVEL_DEBUG, \"[PREZR] OOM while trying to allocate %u bytes (%u available)\", prezr_resource_blob_size, heap_bytes_free());");
+                header.WriteLine("    return PREZR_OUT_OF_MEMORY;");
+                header.WriteLine("  }");
+                header.WriteLine("  if (resource_load(h, prezr_resource_blob, prezr_resource_blob_size) != prezr_resource_blob_size) {");
+                header.WriteLine("    APP_LOG(APP_LOG_LEVEL_DEBUG, \"[PREZR] Failed to load resource %u\", (unsigned) rid);");
+                header.WriteLine("    return PREZR_RESOURCE_LOAD_FAIL;");
+                header.WriteLine("  }");
+                header.WriteLine("  if (*((size_t*)prezr_resource_blob) != prezr_resource_id) {");
+                header.WriteLine("    APP_LOG(APP_LOG_LEVEL_DEBUG, \"[PREZR] Version fail: file %u vs expected %u\", *((size_t*)prezr_resource_blob), prezr_resource_id);");
+                header.WriteLine("    return PREZR_VERSION_FAIL;");
+                header.WriteLine("  }");
+                header.WriteLine($"  for (size_t i = 0; i < {enumPrefix}COUNT; ++i) {{");
+                header.WriteLine("    const uint8_t* data = prezr_resource_blob + prezr_resource_offsets[i];");
+                header.WriteLine("    prezr_embedded_bitmaps[i].bitmap = gbitmap_create_with_data(data);");
+                header.WriteLine("    if (prezr_embedded_bitmaps[i].bitmap == NULL) {{");
+                header.WriteLine("      APP_LOG(APP_LOG_LEVEL_DEBUG, \"[PREZR] Failed to create image %u at offset %u\", i, prezr_resource_offsets[i]);");
+                header.WriteLine("      return (i+1);");
+                header.WriteLine("    }");
+                header.WriteLine("  }");
+                header.WriteLine("  return PREZR_OK;");
                 header.WriteLine("}");
                 header.WriteLine();
 
                 header.WriteLine("void prezr_destroy() {");
-                header.WriteLine($"  size_t imgCount = {enumPrefix}COUNT;");
-                header.WriteLine("  for (int i = 0; i < imgCount; ++i) {");
+                header.WriteLine($"  for (size_t i = 0; i < {enumPrefix}COUNT; ++i) {{");
                 header.WriteLine("    gbitmap_destroy(prezr_embedded_bitmaps[i].bitmap);");
                 header.WriteLine("  }");
+                header.WriteLine("  free(prezr_resource_blob);");
                 header.WriteLine("}");
                 header.WriteLine();
                 
@@ -143,6 +178,12 @@ namespace PRezr
                 header.WriteLine("} prezr_bitmap_t;");
                 header.WriteLine();
 
+                header.WriteLine("#define PREZR_OK 0");
+                header.WriteLine("#define PREZR_RESOURCE_LOAD_FAIL -1");
+                header.WriteLine("#define PREZR_VERSION_FAIL -2");
+                header.WriteLine("#define PREZR_OUT_OF_MEMORY -3");
+                header.WriteLine();
+
                 header.WriteLine("typedef enum prezr_image_index_e {");
                 foreach (var img in imageInfo)
                 {
@@ -152,7 +193,7 @@ namespace PRezr
                 header.WriteLine("} prezr_image_index_t;");
                 header.WriteLine();
 
-                header.WriteLine("void prezr_init();");
+                header.WriteLine("int prezr_init(uint32_t h);");
                 header.WriteLine("void prezr_destroy();");
                 header.WriteLine("const prezr_bitmap_t* prezr_get(prezr_image_index_t imageIndex);");
                 header.WriteLine();
