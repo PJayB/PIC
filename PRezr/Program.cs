@@ -36,12 +36,19 @@ namespace PRezr
             public HashSet<byte> ColorHistogram;
         };
 
+        enum PblPixelFormat
+        {
+            Bit8 = 1,
+            Bit2Palettized = 3,
+            Bit4Palettized = 4
+        }
+
         static void Main(string[] args)
         {
             List<BitmapInfo> imageInfo = new List<BitmapInfo>();
             const string enumPrefix = "PREZR_IMAGE_INDEX_";
             const int version = 1;
-            const int bitmapFormat8Bit = 1; // 8 bit
+            const PblPixelFormat bitmapFormat = PblPixelFormat.Bit8; // 8 bit
             uint blobSize = 0;
 
             var files = Directory.EnumerateFiles(".", "*.png");
@@ -93,7 +100,7 @@ namespace PRezr
                 foreach (BitmapInfo bi in imageInfo)
                 {
                     ushort rowByteStride = (ushort)bi.Width;
-                    ushort versionAndFormat = (ushort)((version << 12) | (bitmapFormat8Bit << 1));
+                    ushort versionAndFormat = (ushort)((version << 12) | ((int)bitmapFormat << 1));
                     ushort x = 0, y = 0;
                     ushort width = (ushort)bi.Width;
                     ushort height = (ushort)bi.Height;
