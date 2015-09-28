@@ -328,9 +328,12 @@ namespace PIC
             public static void Initialize()
             {
                 Directory.CreateDirectory("final");
+#if DEBUG
                 Directory.CreateDirectory("preview");
+#endif
             }
 
+#if DEBUG
             public static string MakePreviewFilename(string original, string differentiator)
             {
                 original = original.Replace("\\sources\\", "\\preview\\");
@@ -338,6 +341,7 @@ namespace PIC
                 Directory.CreateDirectory(Path.GetDirectoryName(fn));
                 return fn;
             }
+#endif
 
             public static string MakeFinalFilename(string original)
             {

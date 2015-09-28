@@ -9,7 +9,7 @@ typedef struct prezr_bitmap_s {
 typedef struct prezr_pack_s {
     struct prezr_pack_header_s* header;
     uint32_t numResources;
-    const prezr_bitmap_t* resources;
+    prezr_bitmap_t* resources;
 } prezr_pack_t;
 
 #define PREZR_OK 0

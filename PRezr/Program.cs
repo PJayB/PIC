@@ -293,7 +293,7 @@ namespace PRezr
 
                 string resourceID = $"RESOURCE_ID_{enumPrefix}PACK";
                 header.WriteLine($"#if defined(PREZR_IMPORT) || defined(PREZR_IMPORT_{packageName.ToUpper()}_PACK)");
-                header.WriteLine($"prezr_pack_t prezr_{packageName};");
+                header.WriteLine($"prezr_pack_t prezr_{packageName} = {{ NULL, 0, NULL }};");
                 header.WriteLine($"void prezr_load_{packageName}() {{");
                 header.WriteLine($"  int r = prezr_init(&prezr_{packageName}, {resourceID});");
                 header.WriteLine($"  if (r != PREZR_OK)");

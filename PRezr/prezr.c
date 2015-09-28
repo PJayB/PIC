@@ -54,12 +54,14 @@ int prezr_init(prezr_pack_t* pack, uint32_t rid) {
 }
 
 void prezr_destroy(prezr_pack_t* pack) {
-    for (uint32_t i = 0; i < pack->numResources; ++i) {
-        if (pack->resources[i].bitmap != NULL) {
-            gbitmap_destroy(pack->resources[i].bitmap);
-            pack->resources[i].bitmap = NULL;
+    if (pack != NULL && pack->header != NULL) {
+        for (uint32_t i = 0; i < pack->numResources; ++i) {
+            if (pack->resources[i].bitmap != NULL) {
+                gbitmap_destroy(pack->resources[i].bitmap);
+                pack->resources[i].bitmap = NULL;
+            }
         }
+        free(pack->header);
+        memset(pack, 0, sizeof(*pack));
     }
-    free(pack->header);
-    memset(pack, 0, sizeof(*pack));
 }
