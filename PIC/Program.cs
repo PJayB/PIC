@@ -364,9 +364,24 @@ namespace PIC
                 string bestEntry = string.Empty;
                 Bitmap bestBmp = null;
 
+                // try no dither first -- error must be zero
+                {
+                    Bitmap tmpBmp = new Bitmap(bmp.Width, bmp.Height, PixelFormat.Format32bppArgb);
+                    float error = DitherOneImage(bmp, tmpBmp, NoDither, transparentColorKey);
+                    if (error == 0)
+                    {
+                        bestEntry = "NoDither";
+                        bestBmp = tmpBmp;
+                        minError = 0;
+                    }
+                }
+
                 Console.WriteLine($"{Path.GetFileNameWithoutExtension(filename)}:");
                 foreach (var ditherEntry in DitherPatterns)
                 {
+                    if (minError == 0) // Can't do any better than no error!
+                        continue;
+
                     Bitmap tmpBmp = new Bitmap(bmp.Width, bmp.Height, PixelFormat.Format32bppArgb);
 
                     float error = DitherOneImage(bmp, tmpBmp, ditherEntry.Value, transparentColorKey);
