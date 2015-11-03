@@ -69,10 +69,10 @@ namespace PRezr
                 {
                     int b = 7;
                     byte v = 0;
-                    for (int k = 0; k < 7 && i + k < srcRowStride; ++k, --b)
+                    for (int k = 0; k < 8 && i + k < srcRowStride; ++k, --b)
                     {
                         int index = colorMap[srcData[srcRowOffset + i + k]];
-                        v |= (byte)(index << b);
+                        v |= (byte)((index & 1) << b);
                     }
                     dstData[dstRowOffset + i / 8] = v;
                 }
