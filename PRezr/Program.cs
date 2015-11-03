@@ -30,6 +30,7 @@ namespace PRezr
         enum PblPixelFormat
         {
             Bit8 = 1,
+            Bit1Palettized = 2,
             Bit2Palettized = 3,
             Bit4Palettized = 4
         }
@@ -43,6 +44,48 @@ namespace PRezr
             public byte[] Palette;
             public PblPixelFormat Format;
         };
+
+        static void Compress1BitPalette(byte[] srcData, int srcRowStride, out byte[] dstData, out byte[] palette)
+        {
+            Dictionary<byte, int> colorMap = new Dictionary<byte, int>();
+            for (int i = 0; i < srcData.Length; ++i)
+            {
+                if (!colorMap.ContainsKey(srcData[i]))
+                    colorMap.Add(srcData[i], colorMap.Count);
+            }
+
+            int numRows = srcData.Length / srcRowStride;
+            Debug.Assert(numRows * srcRowStride == srcData.Length);
+            Debug.Assert(colorMap.Count <= 2);
+
+            int dstRowStride = (srcRowStride + 7) / 8;
+
+            dstData = new byte[dstRowStride * numRows];
+            for (int j = 0, srcRowOffset = 0, dstRowOffset = 0;
+                j < numRows;
+                ++j, srcRowOffset += srcRowStride, dstRowOffset += dstRowStride)
+            {
+                for (int i = 0; i < srcRowStride; i += 8)
+                {
+                    int b = 7;
+                    byte v = 0;
+                    for (int k = 0; k < 7 && i + k < srcRowStride; ++k, --b)
+                    {
+                        int index = colorMap[srcData[srcRowOffset + i + k]];
+                        v |= (byte)(index << b);
+                    }
+                    dstData[dstRowOffset + i / 8] = v;
+                }
+            }
+
+
+            palette = new byte[colorMap.Count];
+            foreach (var kvp in colorMap)
+            {
+                palette[kvp.Value] = kvp.Key;
+            }
+        }
+
 
         static void Compress2BitPalette(byte[] srcData, int srcRowStride, out byte[] dstData, out byte[] palette)
         {
@@ -180,7 +223,16 @@ namespace PRezr
                     byte[] palette = null;
                     BitmapInfo bi = new BitmapInfo();
 
-                    if (colorHistogram.Count <= 4)
+                    if (colorHistogram.Count <= 2)
+                    {
+                        // Encode in 4 bits
+                        Compress1BitPalette(pixels, bmp.Width, out pixels, out palette);
+
+                        bi.Palette = palette;
+                        bi.Pixels = pixels;
+                        bi.Format = PblPixelFormat.Bit1Palettized;
+                    }
+                    else if (colorHistogram.Count <= 4)
                     {
                         // Encode in 4 bits
                         Compress2BitPalette(pixels, bmp.Width, out pixels, out palette);
