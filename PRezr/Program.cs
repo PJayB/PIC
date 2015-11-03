@@ -303,6 +303,9 @@ namespace PRezr
                         case PblPixelFormat.Bit2Palettized:
                             rowByteStride = (ushort)((bi.Width + 3) / 4);
                             break;
+                        case PblPixelFormat.Bit1Palettized:
+                            rowByteStride = (ushort)((bi.Width + 7) / 8);
+                            break;
                         default:
                             rowByteStride = (ushort)bi.Width;
                             break;
